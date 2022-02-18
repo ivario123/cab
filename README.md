@@ -30,3 +30,10 @@ $ chmod +x dependencies.bas
 $ python3 cab.py course_id
 ```
 where course_id should be the course id of the course you want to monitor
+
+
+# Contributing
+All contributions need to be MIT licensed. 
+
+Contributions to the number of languages supported would be greatly appriciated. 
+Aswell as contributions towards a more rigourus implementation would also be appriciated.
