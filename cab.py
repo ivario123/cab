@@ -103,17 +103,17 @@ def send_next_assignment(assignments):
         webhook.execute()
     
     send_message()
-    app_cfg.set("LAST_REPORTED","DEADLINE_DATE",str(assignments[0].deadline_arr))
-    app_cfg.set("LAST_REPORTED","TASK_NAME",assignments[0].lable)
-    # Writing our configuration file to 'example.ini'
-    with open('config/app.cfg', 'w') as configfile:
-        app_cfg.write(configfile)
 
 def get_data(course_id, ):
     base_url = app_cfg["GENERAL"]["api_course_assignments_url"].format(course_id)
     key = auth["API"]["API_KEY"]
     result = requests.get(base_url,headers={"Authorization":f"Bearer {key}"}).text
+
     JSON = json.loads(result)
+    # Check that no indexes in the json is only a string
+    if(any([ type(key)==str for key in JSON])):
+        return result
+    
     tasks = [(submission["name"] , submission["due_at"],submission["html_url"]) for submission in JSON]
     return [assignment(task) for task in tasks]
 
@@ -121,14 +121,16 @@ def get_data(course_id, ):
 def check_for_new_data(assignments):
     prev_next = assignments[0] if len(assignments) > 0 else 0
     assignments = get_data(sys.argv[1]) # Trusting the canvas api to actually return only future assignments
-    app_cfg.read("config/app.cfg")
+    # Check if the request is valid
+    if(type(assignments)!=list):
+        return assignments
+    # If it's a new assignment, notify the students
     print(f"Current next assignment is {assignments[0]}")
     if(assignments[0] != prev_next):
         print("This is a new assignment! Notifying the discord")
         send_next_assignment(assignments)
-    else:
-        print("This is the same, gonna wait with the notification")
     return assignments
+
 if __name__ == "__main__":
     args = sys.argv
     if len(sys.argv) != 2:
@@ -138,4 +140,8 @@ if __name__ == "__main__":
         exit()
     while 1:
         remaining_assignments = check_for_new_data(remaining_assignments)
+        if type(remaining_assignments)!=list:
+            print("Faulty request, returned with error")
+            print(remaining_assignments)
+            exit()
         time.sleep(int(app_cfg["GENERAL"]["sleep_time"]))  # sleep for a minute
