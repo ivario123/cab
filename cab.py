@@ -1,6 +1,4 @@
 import sys
-from email.mime import base
-from turtle import rt
 import requests
 import configparser
 import json
@@ -110,11 +108,14 @@ def update_data(assignments):
     prev_next = assignments[0] if len(assignments) > 0 else 0
     assignments = [assignment for assignment in get_data(sys.argv[1]) if assignment.get_remaining_days()>0]
     app_cfg.read("config/app.cfg")
+    print(f"Current next assignment is {assignments[0]}")
     if(assignments[0] != prev_next 
         or assignments[0].lable != app_cfg["LAST_REPORTED"]["TASK_NAME"] 
         or str(assignments[0].deadline_arr) != app_cfg["LAST_REPORTED"]["DEADLINE_DATE"]):
-        
+        print("This is a new assignment! Notifying the discord")
         send_next_assignment(assignments)
+    else:
+        print("This is the same, gonna wait with the notification")
     return assignments
 if __name__ == "__main__":
     args = sys.argv
@@ -125,4 +126,4 @@ if __name__ == "__main__":
         exit()
     while 1:
         remaining_assignments = update_data(remaining_assignments)
-        time.sleep(20)
+        time.sleep(60)  # sleep for a minute
