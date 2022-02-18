@@ -11,9 +11,9 @@ auth.read("config/auth.cfg")
 app_cfg = configparser.ConfigParser()
 app_cfg.read("config/app.cfg")
 remaining_assignments = []
+language = app_cfg["GENERAL"]["language"]
 
-weekdays = ["Måndag","Tisdag","Onsdag","Torsdag","Fredag","Lördag","Söndag"]
-months = ["januari","februari","mars","april","maj","juni","juli","augusti","september","oktober","november","december"]
+
 class assignment:
     
     def __init__(self,task) -> None:
@@ -31,9 +31,9 @@ class assignment:
         
         self.deadline_arr = due[0]
         # Get current month as string
-        self.month = months[date.month-1]
+        self.month = json.loads(app_cfg[language]["months"])[date.month-1]
         # Get current week day as string
-        self.day = weekdays[date.weekday()]      
+        self.day = json.loads(app_cfg[language]["weekdays"])[date.weekday()]      
         self.lable = task[0]
         self.date_time = date
         self.deadline_hours = due[1][:5]
@@ -41,8 +41,16 @@ class assignment:
 
     # Formats the date to look nice
     def format_date(self):
-        return f"""{self.day} den {self.deadline_arr[2]}{'a' if self.deadline_arr[2] <=1 else 'e'} {self.month} kl {self.deadline_hours}
-vilket är om {self.get_remaining_days()} {'dag' if abs(self.get_remaining_days()) == 1 else 'dagar'}"""
+        return app_cfg[language]["task_date_format"].format(
+            self.day,
+            self.deadline_arr[2],
+            app_cfg[language]["singular_number_ending"] if self.deadline_arr[2] <=2 else app_cfg[language]["plural_number_ending"], # This i local to swede, change this if you need to
+            self.month,
+            self.deadline_hours,
+            '\n',
+            self.get_remaining_days(),
+            app_cfg[language]["day_singular"] if abs(self.get_remaining_days()) == 1 else app_cfg[language]["day_plural"]
+        )
 
 
     # Returns days remaning untill deadline
@@ -52,8 +60,10 @@ vilket är om {self.get_remaining_days()} {'dag' if abs(self.get_remaining_days(
 
     # Returns a string repr of the assignment
     def __repr__(self) -> str:
-        return f"""Uppgiften : {self.lable}
-har deadline {self.format_date()}"""
+        return app_cfg[language]["task_format"].format(
+            self.lable ,
+            '\n',
+            self.format_date())
 
 
     # Return repr
@@ -74,13 +84,8 @@ har deadline {self.format_date()}"""
 
 
 
-def get_data(course_id, ):
-    base_url = f"https://ltu.instructure.com:443/api/v1/courses/{course_id}/assignments?include[]=all_dates"
-    key = auth["API"]["API_KEY"]
-    result = requests.get(base_url,headers={"Authorization":f"Bearer {key}"}).text
-    JSON = json.loads(result)
-    tasks = [(submission["name"] , submission["due_at"],submission["html_url"]) for submission in JSON]
-    return [assignment(task) for task in tasks]
+
+
 
 def send_next_assignment(assignments):
     assignment = assignments[0]
@@ -88,12 +93,12 @@ def send_next_assignment(assignments):
 
     def send_message():
         # Formatting the message to look nice
-        webhook.content = "Hej! nu är det dags för en ny uppgift!"
+        webhook.content = app_cfg[language]["message_rubric"]
         embed = DiscordEmbed(
-        title="Nästa uppgift är", description=assignment.lable, color='03b2f8'
+        title=app_cfg[language]["next_task_rubric"], description=assignment.lable, color='03b2f8'
         )
-        embed.add_embed_field(name="Den har deadline", value=assignment.format_date(), inline=False)
-        embed.add_embed_field(name="Här är en länk till den!", value=assignment.url, inline=False)
+        embed.add_embed_field(name=app_cfg[language]["deadline_rubric"], value=assignment.format_date(), inline=False)
+        embed.add_embed_field(name=app_cfg[language]["url_rubric"], value=assignment.url, inline=False)
         webhook.add_embed(embed)
         webhook.execute()
     
@@ -104,14 +109,21 @@ def send_next_assignment(assignments):
     with open('config/app.cfg', 'w') as configfile:
         app_cfg.write(configfile)
 
-def update_data(assignments):
+def get_data(course_id, ):
+    base_url = app_cfg["GENERAL"]["api_course_assignments_url"].format(course_id)
+    key = auth["API"]["API_KEY"]
+    result = requests.get(base_url,headers={"Authorization":f"Bearer {key}"}).text
+    JSON = json.loads(result)
+    tasks = [(submission["name"] , submission["due_at"],submission["html_url"]) for submission in JSON]
+    return [assignment(task) for task in tasks]
+
+
+def check_for_new_data(assignments):
     prev_next = assignments[0] if len(assignments) > 0 else 0
-    assignments = [assignment for assignment in get_data(sys.argv[1]) if assignment.get_remaining_days()>0]
+    assignments = get_data(sys.argv[1]) # Trusting the canvas api to actually return only future assignments
     app_cfg.read("config/app.cfg")
     print(f"Current next assignment is {assignments[0]}")
-    if(assignments[0] != prev_next 
-        or assignments[0].lable != app_cfg["LAST_REPORTED"]["TASK_NAME"] 
-        or str(assignments[0].deadline_arr) != app_cfg["LAST_REPORTED"]["DEADLINE_DATE"]):
+    if(assignments[0] != prev_next):
         print("This is a new assignment! Notifying the discord")
         send_next_assignment(assignments)
     else:
@@ -125,5 +137,5 @@ if __name__ == "__main__":
         print("=====================")
         exit()
     while 1:
-        remaining_assignments = update_data(remaining_assignments)
-        time.sleep(60)  # sleep for a minute
+        remaining_assignments = check_for_new_data(remaining_assignments)
+        time.sleep(int(app_cfg["GENERAL"]["sleep_time"]))  # sleep for a minute
